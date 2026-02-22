@@ -1,9 +1,0 @@
-pyusb>=1.2.0
-python-can>=4.0.0
-
-[bluetooth]
-pybluez>=0.23
-
-[dev]
-pytest>=7.0
-pytest-cov

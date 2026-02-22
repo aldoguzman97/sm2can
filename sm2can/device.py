@@ -4,11 +4,12 @@ SM2Device — High-level API for the SM2 Pro CAN adapter.
 Combines the USB transport with the protocol codec to provide
 a simple, thread-safe interface for CAN bus operations.
 
+Uses confirmed protocol from APK reverse engineering + hardware probing.
+
 Copyright (c) 2026 Aldo Guzman. MIT License.
 """
 
 import time
-import struct
 import logging
 import threading
 from typing import Optional
@@ -16,7 +17,7 @@ from collections import deque
 
 from sm2can.usb_transport import USBTransport, USBTransportError
 from sm2can.protocol import (
-    ProtocolCodec, ProtocolDetector, Command, CANFrame, CANMode, DeviceInfo
+    SM2Codec, Cmd, CANFrame, CANMode, DeviceInfo, build_frame, parse_frame
 )
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ class SM2Device:
     def __init__(self, vid: int = 0x20A2, pid: int = 0x0001,
                  bus: Optional[int] = None, address: Optional[int] = None):
         self._transport = USBTransport(vid=vid, pid=pid, bus=bus, address=address)
-        self._codec = ProtocolCodec()
+        self._codec = SM2Codec()
         self._is_open = False
         self._bitrate = 0
         self._mode = CANMode.NORMAL
@@ -65,55 +66,84 @@ class SM2Device:
     def device_info(self) -> Optional[DeviceInfo]:
         return self._device_info
 
-    def open(self, bitrate: int = 500000, mode: int = CANMode.NORMAL,
-             auto_detect: bool = True) -> None:
+    def open(self, bitrate: int = 500000, mode: int = CANMode.NORMAL) -> None:
         """
         Open the SM2 Pro and start CAN communication.
+
+        Init sequence (confirmed via probing):
+            1. Open USB transport
+            2. Send INIT (0x88) — expect SUCCESS (0x00)
+            3. Send ECHO (0x82) — verify firmware is alive
+            4. Send DEVICE_INFO (0x83) — get fw/hw version
+            5. Send CLEAR_FIFO (0x86) — flush device buffers
+            6. Send CAN_OPEN (0x8A) — configure CAN channel
 
         Args:
             bitrate: CAN bus bitrate (default 500000).
             mode: CAN mode (NORMAL, LISTEN_ONLY, LOOPBACK).
-            auto_detect: Try to auto-detect protocol variant.
 
         Raises:
             SM2DeviceError: If the device can't be opened or configured.
         """
+        # Step 1: Open USB
         try:
             self._transport.open()
         except USBTransportError as e:
             raise SM2DeviceError(f"Cannot open SM2 Pro: {e}") from e
 
-        # Check firmware boot state
-        if not self._transport.check_firmware_booted():
-            logger.warning(
-                "SM2 Pro bulk endpoints not responding. "
-                "The device likely needs 12V on the OBD connector to boot."
+        # Step 2: Init
+        resp = self._send_cmd(Cmd.INIT, label="INIT")
+        if resp is None:
+            raise SM2DeviceError(
+                "SM2 Pro not responding to INIT command. "
+                "Device may be in bootloader mode or hardware fault."
             )
+        rx_cmd = resp[0] if resp else None
+        if rx_cmd == Cmd.NACK:
+            raise SM2DeviceError("SM2 Pro rejected INIT command")
+        logger.info("INIT: OK (rx_cmd=0x%02X)", rx_cmd or 0)
 
-        # Auto-detect protocol variant
-        if auto_detect:
-            detector = ProtocolDetector(self._transport)
-            detected = detector.detect()
-            if detected:
-                self._codec = detected
-                logger.info("Protocol auto-detected successfully")
+        # Step 3: Echo test
+        echo_data = b'SM2CAN'
+        echo_frame = self._codec.encode_echo(echo_data)
+        echo_resp = self._transport.write_read(echo_frame, timeout_ms=1000)
+        if echo_resp:
+            result = parse_frame(echo_resp)
+            if result:
+                _, _, valid, payload = result
+                if valid and echo_data in payload:
+                    logger.info("ECHO: verified — firmware alive")
+                else:
+                    logger.warning("ECHO: response but payload mismatch")
+            else:
+                logger.warning("ECHO: unparseable response")
+        else:
+            logger.warning("ECHO: no response (device may still work)")
 
-        # Request device info
+        # Step 4: Device info
         self._request_device_info()
 
-        # Open CAN channel
-        frame = self._codec.encode_can_open(bitrate, mode)
-        resp = self._transport.write_read(frame, timeout_ms=1000)
-        if resp:
-            decoded = self._codec.decode_frame(resp)
-            if decoded:
-                cmd, payload = decoded
-                if cmd == Command.NACK:
-                    err_code = payload[0] if payload else 0xFF
-                    raise SM2DeviceError(
-                        f"CAN open rejected by device (error 0x{err_code:02X})"
-                    )
-                logger.info("CAN channel opened: %d bps, mode=%d", bitrate, mode)
+        # Step 5: Clear FIFO
+        self._send_cmd(Cmd.CLEAR_FIFO, label="CLEAR_FIFO")
+
+        # Step 6: Open CAN channel
+        can_frame = self._codec.encode_can_open(bitrate, mode)
+        can_resp = self._transport.write_read(can_frame, timeout_ms=1000)
+        if can_resp:
+            result = parse_frame(can_resp)
+            if result:
+                rx_cmd, _, valid, payload = result
+                if rx_cmd == Cmd.NACK:
+                    logger.warning("CAN_OPEN returned NACK — channel may need "
+                                   "vehicle bus connected")
+                elif rx_cmd == Cmd.CAN_OPEN:
+                    logger.info("CAN_OPEN: accepted (cmd echoed)")
+                elif rx_cmd == Cmd.SUCCESS:
+                    logger.info("CAN_OPEN: success")
+                else:
+                    logger.info("CAN_OPEN: response cmd=0x%02X", rx_cmd)
+        else:
+            logger.warning("CAN_OPEN: no response")
 
         self._bitrate = bitrate
         self._mode = mode
@@ -121,6 +151,9 @@ class SM2Device:
 
         # Start background receive thread
         self._start_rx_thread()
+
+        logger.info("SM2 Pro opened: %d bps, mode=%s", bitrate,
+                     CANMode(mode).name)
 
     def close(self) -> None:
         """Close the CAN channel and release the USB device."""
@@ -146,12 +179,9 @@ class SM2Device:
 
         Args:
             arb_id: CAN arbitration ID (11-bit or 29-bit).
-            data: Frame data (0-8 bytes, truncated if longer).
+            data: Frame data (0-8 bytes).
             is_extended_id: True for 29-bit extended ID.
             is_remote_frame: True for RTR frame.
-
-        Raises:
-            SM2DeviceError: If not open or write fails.
         """
         if not self._is_open:
             raise SM2DeviceError("Device not open — call open() first")
@@ -188,46 +218,78 @@ class SM2Device:
 
     def set_filter(self, arb_id: int, mask: int = 0x7FF) -> None:
         """Set a CAN acceptance filter."""
-        data = struct.pack('>II', arb_id, mask)
-        frame = self._codec.encode_command(Command.CAN_SET_FILTER, data)
+        if not self._is_open:
+            raise SM2DeviceError("Device not open")
+        frame = self._codec.encode_can_filter(arb_id, mask)
         self._transport.write(frame)
 
     def clear_filters(self) -> None:
         """Clear all CAN filters (accept all)."""
-        frame = self._codec.encode_command(Command.CAN_CLEAR_FILTER)
+        if not self._is_open:
+            raise SM2DeviceError("Device not open")
+        frame = self._codec.encode_can_clear_filter()
         self._transport.write(frame)
 
-    def get_voltage(self) -> float:
+    def echo(self, payload: bytes = b'SM2CAN') -> Optional[bytes]:
         """
-        Read the OBD connector voltage.
+        Send echo command and return echoed payload.
 
-        Returns:
-            Voltage in volts, or 0.0 if unavailable.
+        Useful for health checks.
         """
-        frame = self._codec.encode_command(Command.GET_VOLTAGE)
+        frame = self._codec.encode_echo(payload)
+        resp = self._transport.write_read(frame, timeout_ms=1000)
+        if resp:
+            result = parse_frame(resp)
+            if result:
+                _, _, _, rx_payload = result
+                return rx_payload
+        return None
+
+    def get_status(self) -> Optional[int]:
+        """Query device status. Returns response cmd byte."""
+        frame = self._codec.encode_status()
         resp = self._transport.write_read(frame, timeout_ms=500)
         if resp:
-            decoded = self._codec.decode_frame(resp)
-            if decoded:
-                _, payload = decoded
-                if len(payload) >= 2:
-                    raw = struct.unpack('>H', payload[:2])[0]
-                    return raw * 0.01  # Typically in 10mV units
-        return 0.0
+            result = parse_frame(resp)
+            if result:
+                return result[0]
+        return None
 
     # ── Private ──
 
+    def _send_cmd(self, cmd: int, payload: bytes = b'',
+                  label: str = "", timeout_ms: int = 1000
+                  ) -> Optional[bytes]:
+        """Send a command and return raw response bytes."""
+        frame = build_frame(cmd, payload)
+        resp = self._transport.write_read(frame, timeout_ms=timeout_ms)
+        if resp:
+            logger.debug("%s: TX=%s RX=%s", label or f"CMD 0x{cmd:02X}",
+                         frame.hex(' '), resp.hex(' '))
+        else:
+            logger.debug("%s: TX=%s RX=(timeout)", label or f"CMD 0x{cmd:02X}",
+                         frame.hex(' '))
+        return resp
+
     def _request_device_info(self) -> None:
         """Request and store device identification."""
-        frame = self._codec.encode_identify()
+        frame = self._codec.encode_device_info()
         resp = self._transport.write_read(frame, timeout_ms=1000)
         if resp:
-            decoded = self._codec.decode_frame(resp)
-            if decoded:
-                _, payload = decoded
-                self._device_info = DeviceInfo()
-                # Parse when we know the response format from captures
-                logger.info("Device info received: %d bytes", len(payload))
+            result = parse_frame(resp)
+            if result:
+                rx_cmd, length, valid, payload = result
+                if rx_cmd == Cmd.SUCCESS and payload:
+                    self._device_info = self._codec.decode_device_info(payload)
+                    logger.info(
+                        "Device info: HW_ID=%s FW=%s HW=%s",
+                        self._device_info.hardware_id_hex,
+                        self._device_info.firmware_str,
+                        self._device_info.hardware_str,
+                    )
+                else:
+                    logger.warning("DEVICE_INFO: cmd=0x%02X len=%d",
+                                   rx_cmd, length)
 
     def _start_rx_thread(self) -> None:
         """Start background CAN frame receiver."""
@@ -248,26 +310,43 @@ class SM2Device:
 
     def _rx_loop(self) -> None:
         """Background thread: read USB and decode CAN frames."""
+        consecutive_errors = 0
+        max_consecutive_errors = 50
+
         while self._rx_running and self._transport.is_open:
             try:
                 data = self._transport.read(timeout_ms=50)
                 if data:
+                    consecutive_errors = 0
                     frames = self._codec.feed(data)
                     for cmd, payload in frames:
-                        if cmd == Command.CAN_RECV:
+                        if cmd == Cmd.CAN_RECV:
                             can_frame = self._codec.decode_can_frame(payload)
                             if can_frame:
                                 can_frame.timestamp = time.time()
                                 self._rx_queue.append(can_frame)
-                        elif cmd == Command.ASYNC_EVENT:
-                            logger.debug("Async event: %s", payload.hex(' '))
+                        else:
+                            logger.debug("RX async: cmd=0x%02X len=%d",
+                                         cmd, len(payload))
             except USBTransportError:
                 if self._rx_running:
+                    consecutive_errors += 1
+                    if consecutive_errors >= max_consecutive_errors:
+                        logger.error(
+                            "RX thread: %d consecutive USB errors, stopping",
+                            consecutive_errors)
+                        break
                     time.sleep(0.01)
             except Exception as e:
                 if self._rx_running:
                     logger.debug("RX thread error: %s", e)
+                    consecutive_errors += 1
+                    if consecutive_errors >= max_consecutive_errors:
+                        break
                     time.sleep(0.01)
+
+        logger.debug("RX thread exited (running=%s, errors=%d)",
+                     self._rx_running, consecutive_errors)
 
     def __enter__(self):
         self.open()

@@ -1,9 +1,0 @@
-LICENSE
-README.md
-pyproject.toml
-sm2can.egg-info/PKG-INFO
-sm2can.egg-info/SOURCES.txt
-sm2can.egg-info/dependency_links.txt
-sm2can.egg-info/entry_points.txt
-sm2can.egg-info/requires.txt
-sm2can.egg-info/top_level.txt
