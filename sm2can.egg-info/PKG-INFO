@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: sm2can
-Version: 0.2.0
+Version: 0.2.1
 Summary: Open-source macOS/Linux driver for SM2 Pro J2534 CAN adapters
 Author-email: Aldo Guzman <aldoguzman97@users.noreply.github.com>
 License: MIT
