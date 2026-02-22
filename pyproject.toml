@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sm2can"
-version = "0.2.0"
+version = "0.2.1"
 description = "Open-source macOS/Linux driver for SM2 Pro J2534 CAN adapters"
 readme = "README.md"
 license = {text = "MIT"}
