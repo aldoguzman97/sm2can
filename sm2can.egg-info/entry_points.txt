@@ -1,0 +1,7 @@
+[can.interface]
+sm2 = sm2can.can_interface:SM2Bus
+
+[console_scripts]
+sm2can = sm2can.cli:main
+sm2can-capture = sm2can.tools.capture_decoder:main
+sm2can-probe = sm2can.tools.probe:main

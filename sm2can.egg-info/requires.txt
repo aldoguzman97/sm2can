@@ -1,0 +1,17 @@
+pyusb>=1.2.0
+python-can>=4.0
+
+[all]
+sm2can[bluetooth,capture,dev]
+
+[bluetooth]
+bleak>=0.21.0
+
+[capture]
+pyshark
+
+[dev]
+pytest>=7.0
+pytest-cov
+ruff
+mypy
