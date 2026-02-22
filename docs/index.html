@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="google-site-verification" content="dE0wgIvskOZJh47qXGSx7Wmvg-H9pxUi7OQveYPkEgo" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Primary SEO -->
+  <title>SM2CAN — Open-Source macOS & Linux Driver for SM2 Pro / Scanmatik 2 Pro CAN Adapter</title>
+  <meta name="description" content="Open-source userspace USB driver for the SM2 Pro (Scanmatik 2 Pro) J2534 CAN adapter. Use your SM2 Pro on macOS and Linux with python-can. No Windows required.">
+  <meta name="keywords" content="SM2 Pro, Scanmatik 2 Pro, macOS driver, Linux driver, CAN bus, J2534, python-can, USB driver, OBD-II, vehicle diagnostics, ECU tuning, open source, automotive, CAN adapter">
+  <meta name="author" content="Aldo Guzman">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://aldoguzman97.github.io/sm2can/">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://aldoguzman97.github.io/sm2can/">
+  <meta property="og:title" content="SM2CAN — Open-Source Driver for SM2 Pro on macOS & Linux">
+  <meta property="og:description" content="Use your Scanmatik 2 Pro on macOS and Linux. Open-source USB driver with python-can integration. No Windows required.">
+  <meta property="og:site_name" content="SM2CAN">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SM2CAN — SM2 Pro Driver for macOS & Linux">
+  <meta name="twitter:description" content="Open-source USB driver for the SM2 Pro (Scanmatik 2 Pro) J2534 CAN adapter. python-can compatible.">
+
+  <!-- Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "SM2CAN",
+    "description": "Open-source userspace USB/Bluetooth driver for SM2 Pro (Scanmatik 2 Pro) J2534 CAN adapters on macOS and Linux. python-can compatible.",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS, Linux",
+    "url": "https://aldoguzman97.github.io/sm2can/",
+    "downloadUrl": "https://pypi.org/project/sm2can/",
+    "softwareVersion": "0.1.0",
+    "author": {
+      "@type": "Person",
+      "name": "Aldo Guzman",
+      "url": "https://github.com/aldoguzman97"
+    },
+    "codeRepository": "https://github.com/aldoguzman97/sm2can",
+    "programmingLanguage": "Python",
+    "license": "https://opensource.org/licenses/MIT",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Can I use the SM2 Pro on macOS?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. SM2CAN is an open-source USB driver that lets you use your SM2 Pro (Scanmatik 2 Pro) on macOS without Windows. It works with python-can and communicates directly via libusb — no kernel driver or kext required."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use the Scanmatik 2 Pro on Linux?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. SM2CAN provides full Linux support via libusb with included udev rules for automatic device permissions. Install via pip install sm2can or through the Homebrew tap."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is SM2CAN compatible with python-can?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. SM2CAN registers as a native python-can Bus plugin. After installation, use it with: import can; bus = can.Bus(interface='sm2'). It integrates seamlessly with any python-can workflow."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What is the SM2 Pro / Scanmatik 2 Pro?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "The SM2 Pro (also known as Scanmatik 2 Pro) is a J2534 pass-through CAN adapter widely used for ECU programming, vehicle diagnostics, and automotive tuning. It communicates over USB with a proprietary binary protocol and traditionally requires Windows-only software."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is reverse engineering the SM2 Pro legal?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. Clean room reverse engineering of purchased hardware for interoperability purposes is well-established law. Key precedents include Sega v. Accolade (1992) and Sony v. Connectix (2000) in the US, and EU Directive 2009/24/EC Article 6 in Europe. SM2CAN was developed entirely from observing the publicly visible USB interface — no proprietary code, firmware, or documentation was used."
+        }
+      }
+    ]
+  }
+  </script>
+
+  <!-- Preconnect -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #0a0a0b;
+      --bg-elevated: #111113;
+      --bg-card: #161618;
+      --bg-code: #1a1a1e;
+      --border: #2a2a2e;
+      --border-glow: #3a3a40;
+      --text: #e8e8ec;
+      --text-dim: #8888a0;
+      --text-muted: #55556a;
+      --accent: #22c55e;
+      --accent-dim: #16a34a;
+      --accent-glow: rgba(34, 197, 94, 0.15);
+      --accent-glow-strong: rgba(34, 197, 94, 0.3);
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --blue: #3b82f6;
+      --font-display: 'Outfit', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-display);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Noise texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* Top glow */
+    .top-glow {
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 800px;
+      height: 500px;
+      background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    a { color: var(--accent); text-decoration: none; transition: color 0.2s; }
+    a:hover { color: #4ade80; }
+
+    /* Navigation */
+    nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 100;
+      background: rgba(10, 10, 11, 0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0.8rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .nav-logo {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+    }
+    .nav-logo span { color: var(--text-dim); font-weight: 400; }
+    .nav-links { display: flex; gap: 2rem; align-items: center; }
+    .nav-links a {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      font-weight: 500;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--text); }
+    .nav-badge {
+      background: var(--accent-glow);
+      color: var(--accent);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      padding: 0.3rem 0.8rem;
+      border-radius: 100px;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      font-weight: 600;
+    }
+
+    /* Hero */
+    .hero {
+      position: relative;
+      padding: 10rem 2rem 6rem;
+      text-align: center;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .hero-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 100px;
+      padding: 0.4rem 1.2rem;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-bottom: 2rem;
+      font-family: var(--font-mono);
+    }
+    .hero-chip .dot {
+      width: 6px; height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--accent-glow-strong); }
+      50% { opacity: 0.7; box-shadow: 0 0 0 8px transparent; }
+    }
+
+    h1 {
+      font-size: clamp(2.8rem, 7vw, 4.5rem);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      margin-bottom: 1.5rem;
+    }
+    h1 .highlight {
+      background: linear-gradient(135deg, var(--accent) 0%, #86efac 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: 1.2rem;
+      color: var(--text-dim);
+      max-width: 600px;
+      margin: 0 auto 2.5rem;
+      font-weight: 300;
+      line-height: 1.8;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 3rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.85rem 1.8rem;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-display);
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+      box-shadow: 0 0 30px var(--accent-glow-strong);
+    }
+    .btn-primary:hover {
+      background: #4ade80;
+      color: #000;
+      box-shadow: 0 0 40px var(--accent-glow-strong);
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      border-color: var(--border-glow);
+      background: var(--bg-elevated);
+      color: var(--text);
+      transform: translateY(-1px);
+    }
+
+    /* Install block */
+    .install-block {
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.5rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      margin: 0 auto;
+      position: relative;
+    }
+    .install-block .prompt { color: var(--accent); user-select: none; }
+    .install-block code { color: var(--text); }
+    .install-block .copy-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      transition: all 0.2s;
+    }
+    .install-block .copy-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Sections */
+    section {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 5rem 2rem;
+    }
+
+    h2 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.5rem;
+    }
+    .section-sub {
+      color: var(--text-dim);
+      font-size: 1.05rem;
+      margin-bottom: 3rem;
+      font-weight: 300;
+    }
+
+    /* Feature grid */
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 2rem;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .feature-card:hover {
+      border-color: var(--border-glow);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+    }
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .feature-card:hover::before { opacity: 1; }
+    .feature-icon {
+      font-size: 1.8rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+    .feature-card h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.01em;
+    }
+    .feature-card p {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      line-height: 1.7;
+    }
+
+    /* Status table */
+    .status-section { border-top: 1px solid var(--border); }
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    .status-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.2rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.green { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow-strong); }
+    .status-dot.amber { background: var(--amber); box-shadow: 0 0 8px rgba(245, 158, 11, 0.3); }
+    .status-dot.blue { background: var(--blue); box-shadow: 0 0 8px rgba(59, 130, 246, 0.3); }
+    .status-label { font-size: 0.85rem; color: var(--text-dim); }
+    .status-label strong { color: var(--text); display: block; font-weight: 600; }
+
+    /* Code example */
+    .code-section { border-top: 1px solid var(--border); }
+    .code-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 768px) { .code-grid { grid-template-columns: 1fr; } }
+    .code-block {
+      background: var(--bg-code);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .code-header {
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      padding: 0.6rem 1rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .code-header .file-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .code-block pre {
+      padding: 1.2rem;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.8;
+      color: var(--text-dim);
+    }
+    .code-block .kw { color: #c084fc; }
+    .code-block .fn { color: #60a5fa; }
+    .code-block .str { color: #86efac; }
+    .code-block .cm { color: var(--text-muted); }
+    .code-block .var { color: var(--text); }
+
+    /* FAQ */
+    .faq-section { border-top: 1px solid var(--border); }
+    .faq-list { display: grid; gap: 1rem; max-width: 800px; }
+    .faq-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .faq-q {
+      padding: 1.2rem 1.5rem;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: color 0.2s;
+    }
+    .faq-q:hover { color: var(--accent); }
+    .faq-q .arrow {
+      transition: transform 0.3s;
+      color: var(--text-muted);
+      font-size: 1.2rem;
+    }
+    .faq-item.open .faq-q .arrow { transform: rotate(45deg); }
+    .faq-a {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+    }
+    .faq-item.open .faq-a {
+      max-height: 300px;
+      padding: 0 1.5rem 1.2rem;
+    }
+    .faq-a p {
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      line-height: 1.8;
+    }
+
+    /* Compatible hardware */
+    .compat-section { border-top: 1px solid var(--border); }
+    .compat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1rem;
+    }
+    .compat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+    }
+    .compat-card h3 {
+      font-family: var(--font-mono);
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .compat-card p { color: var(--text-dim); font-size: 0.85rem; }
+    .compat-card .tag {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+    }
+    .tag-usb { background: rgba(34, 197, 94, 0.15); color: var(--accent); }
+    .tag-bt { background: rgba(59, 130, 246, 0.15); color: var(--blue); }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 3rem 2rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+    footer a { color: var(--text-dim); }
+    footer .legal {
+      margin-top: 1rem;
+      font-size: 0.75rem;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.8;
+    }
+
+    /* Animations */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(20px);
+      animation: fadeUp 0.6s ease forwards;
+    }
+    .fade-in:nth-child(2) { animation-delay: 0.1s; }
+    .fade-in:nth-child(3) { animation-delay: 0.2s; }
+    .fade-in:nth-child(4) { animation-delay: 0.3s; }
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Mobile */
+    @media (max-width: 640px) {
+      .nav-links { gap: 1rem; }
+      .nav-links a { font-size: 0.75rem; }
+      .hero { padding: 8rem 1.5rem 4rem; }
+      section { padding: 3rem 1.5rem; }
+      .hero-actions { flex-direction: column; align-items: center; }
+      .install-block { font-size: 0.8rem; padding: 0.8rem 1rem; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="top-glow" aria-hidden="true"></div>
+
+  <nav>
+    <div class="nav-inner">
+      <div class="nav-logo">sm2can <span>v0.1.0</span></div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#usage">Usage</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/aldoguzman97/sm2can" class="nav-badge">GitHub ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <!-- Hero -->
+    <header class="hero">
+      <div class="hero-chip fade-in">
+        <span class="dot"></span>
+        Open Source · MIT Licensed
+      </div>
+      <h1 class="fade-in">
+        Your <span class="highlight">SM2 Pro</span> works<br>on macOS &amp; Linux now.
+      </h1>
+      <p class="hero-sub fade-in">
+        Open-source USB driver for the SM2 Pro (Scanmatik 2 Pro) J2534 CAN adapter.
+        python-can compatible. No Windows required. No kernel driver. No kext.
+      </p>
+      <div class="hero-actions fade-in">
+        <a href="https://github.com/aldoguzman97/sm2can" class="btn btn-primary">
+          View on GitHub
+        </a>
+        <a href="https://pypi.org/project/sm2can/" class="btn btn-secondary">
+          PyPI Package
+        </a>
+      </div>
+      <div class="install-block fade-in">
+        <span class="prompt">$</span>
+        <code>pip install sm2can</code>
+        <button class="copy-btn" onclick="navigator.clipboard.writeText('pip install sm2can');this.textContent='✓';setTimeout(()=>this.textContent='copy',1500)">copy</button>
+      </div>
+    </header>
+
+    <!-- Features -->
+    <section id="features">
+      <h2 class="fade-in">Built for the real world</h2>
+      <p class="section-sub fade-in">Everything you need to use your SM2 Pro hardware on the platform you actually work on.</p>
+      <div class="features">
+        <article class="feature-card fade-in">
+          <span class="feature-icon">🔌</span>
+          <h3>Userspace USB Transport</h3>
+          <p>Communicates directly via libusb. No kernel module, no kext signing, no sudo required after initial udev setup. Plug in and go.</p>
+        </article>
+        <article class="feature-card fade-in">
+          <span class="feature-icon">🐍</span>
+          <h3>python-can Native Plugin</h3>
+          <p>Registers as a native python-can Bus interface. <code>can.Bus(interface='sm2')</code> works out of the box with your existing CAN workflows.</p>
+        </article>
+        <article class="feature-card fade-in">
+          <span class="feature-icon">🔍</span>
+          <h3>Protocol Auto-Detection</h3>
+          <p>Automatic frame format and checksum detection across Scanmatik protocol variants. Extensible codec framework for protocol evolution.</p>
+        </article>
+        <article class="feature-card fade-in">
+          <span class="feature-icon">📡</span>
+          <h3>USB Capture Decoder</h3>
+          <p>Built-in pcap/pcapng decoder extracts and reverse-engineers the Scanmatik wire protocol from a single Windows USB capture. No Wireshark or tshark required.</p>
+        </article>
+        <article class="feature-card fade-in">
+          <span class="feature-icon">🛡️</span>
+          <h3>Legally Protected</h3>
+          <p>Clean room reverse engineering with case law citations. Sega v. Accolade, Sony v. Connectix, EU Directive 2009/24/EC. Every byte observed, nothing stolen.</p>
+        </article>
+        <article class="feature-card fade-in">
+          <span class="feature-icon">🍺</span>
+          <h3>Homebrew &amp; PyPI</h3>
+          <p>Install via <code>brew tap aldoguzman97/sm2can</code> or <code>pip install sm2can</code>. First-class packaging for macOS and Linux with CLI tools included.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- Project Status -->
+    <section class="status-section">
+      <h2>Project Status</h2>
+      <p class="section-sub">What's working, what's next.</p>
+      <div class="status-grid">
+        <div class="status-item">
+          <span class="status-dot green"></span>
+          <span class="status-label"><strong>USB Transport</strong>Complete — libusb</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot green"></span>
+          <span class="status-label"><strong>python-can Plugin</strong>Complete — Bus interface</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot green"></span>
+          <span class="status-label"><strong>Capture Decoder</strong>Complete — pcap/pcapng</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot green"></span>
+          <span class="status-label"><strong>CLI Tools</strong>sm2can, sm2can-probe</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot amber"></span>
+          <span class="status-label"><strong>Protocol Codec</strong>Framework ready — needs captures</span>
+        </div>
+        <div class="status-item">
+          <span class="status-dot blue"></span>
+          <span class="status-label"><strong>Bluetooth SPP</strong>Architecture scaffolded</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Code Examples -->
+    <section id="usage" class="code-section">
+      <h2>Simple by design</h2>
+      <p class="section-sub">Three lines to talk CAN. Everything else is handled.</p>
+      <div class="code-grid">
+        <div class="code-block">
+          <div class="code-header"><span class="file-dot"></span> python-can usage</div>
+          <pre><span class="kw">import</span> <span class="var">can</span>
+
+<span class="cm"># SM2 Pro auto-detected via python-can plugin</span>
+<span class="var">bus</span> = <span class="var">can</span>.<span class="fn">Bus</span>(<span class="str">interface</span>=<span class="str">'sm2'</span>)
+
+<span class="cm"># Send a CAN frame</span>
+<span class="var">msg</span> = <span class="var">can</span>.<span class="fn">Message</span>(
+    <span class="str">arbitration_id</span>=<span class="var">0x340</span>,
+    <span class="str">data</span>=[<span class="var">0x04</span>, <span class="var">0x00</span>, <span class="var">0x00</span>, <span class="var">0x04</span>,
+          <span class="var">0x70</span>, <span class="var">0x00</span>, <span class="var">0x89</span>, <span class="var">0x11</span>]
+)
+<span class="var">bus</span>.<span class="fn">send</span>(<span class="var">msg</span>)
+
+<span class="cm"># Receive</span>
+<span class="var">response</span> = <span class="var">bus</span>.<span class="fn">recv</span>(<span class="str">timeout</span>=<span class="var">1.0</span>)</pre>
+        </div>
+        <div class="code-block">
+          <div class="code-header"><span class="file-dot"></span> CLI tools</div>
+          <pre><span class="cm"># Probe your SM2 Pro hardware</span>
+<span class="var">$</span> <span class="fn">sm2can-probe</span>
+
+<span class="cm"># Decode a Windows USB capture</span>
+<span class="var">$</span> <span class="fn">sm2can-capture</span> <span class="str">decode</span> capture.pcapng
+
+<span class="cm"># Interactive CAN shell</span>
+<span class="var">$</span> <span class="fn">sm2can</span> <span class="str">--bitrate 500000</span>
+
+<span class="cm"># Version check</span>
+<span class="var">$</span> <span class="fn">sm2can</span> <span class="str">--version</span>
+sm2can 0.1.0
+
+<span class="cm"># Install from Homebrew tap</span>
+<span class="var">$</span> <span class="fn">brew</span> <span class="str">tap</span> aldoguzman97/sm2can
+<span class="var">$</span> <span class="fn">brew</span> <span class="str">install</span> sm2can</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Compatible Hardware -->
+    <section class="compat-section">
+      <h2>Compatible Hardware</h2>
+      <p class="section-sub">Tested and targeted devices.</p>
+      <div class="compat-grid">
+        <div class="compat-card">
+          <h3>SM2 Pro (Scanmatik 2 Pro)</h3>
+          <p>Primary target. USB VID 0x20A2, PID 0x0001. Vendor-specific USB class, 2 bulk endpoints. Requires 12V from OBD connector for full operation.</p>
+          <span class="tag tag-usb">USB</span>
+        </div>
+        <div class="compat-card">
+          <h3>Scanmatik 2 (Original)</h3>
+          <p>Earlier hardware revision. Same USB protocol family. May work with minimal adaptation once protocol bytes are confirmed.</p>
+          <span class="tag tag-usb">USB</span>
+        </div>
+        <div class="compat-card">
+          <h3>SM2 Pro Bluetooth</h3>
+          <p>SPP (Serial Port Profile) transport architecture scaffolded. Ready for community implementation. 10-50ms latency — suitable for diagnostics, not real-time control.</p>
+          <span class="tag tag-bt">Bluetooth · Planned</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq" class="faq-section">
+      <h2>Frequently Asked Questions</h2>
+      <p class="section-sub">What people ask before plugging in.</p>
+      <div class="faq-list">
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">Can I use my SM2 Pro on macOS?<span class="arrow">+</span></div>
+          <div class="faq-a"><p>Yes. SM2CAN is a userspace USB driver that communicates via libusb — no kernel extension or driver signing needed. Install with <code>pip install sm2can</code> and your SM2 Pro works on macOS 12+.</p></div>
+        </div>
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">Does it work on Linux?<span class="arrow">+</span></div>
+          <div class="faq-a"><p>Yes. Full Linux support with included udev rules for automatic device permissions. Works on any distribution with Python 3.8+ and libusb.</p></div>
+        </div>
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">Is this compatible with python-can?<span class="arrow">+</span></div>
+          <div class="faq-a"><p>Yes. SM2CAN registers as a native python-can Bus plugin via entry points. After installation, <code>can.Bus(interface='sm2')</code> works with all your existing python-can code, scripts, and tools.</p></div>
+        </div>
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">Is reverse engineering my own hardware legal?<span class="arrow">+</span></div>
+          <div class="faq-a"><p>Yes. Clean room reverse engineering of purchased hardware for interoperability is well-established in US and EU law. Sega v. Accolade (1992), Sony v. Connectix (2000), and EU Directive 2009/24/EC all affirm this right. See LEGAL.md in the repository for full citations.</p></div>
+        </div>
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">What's still missing?<span class="arrow">+</span></div>
+          <div class="faq-a"><p>The actual Scanmatik protocol bytes. The device requires 12V from the OBD connector to boot its application firmware — USB 5V alone leaves the bulk endpoints silent. One 5-minute USB capture from a Windows session completes the protocol decode for everyone. See the CONTRIBUTING guide.</p></div>
+        </div>
+        <div class="faq-item" onclick="this.classList.toggle('open')">
+          <div class="faq-q">How can I contribute?<span class="arrow">+</span></div>
+          <div class="faq-a"><p>The most impactful contribution is a USB capture: install USBPcap on Windows, plug in your SM2 Pro with 12V from the OBD harness, run a short Scanmatik session, and submit the .pcapng file to the GitHub issues page. The built-in capture decoder handles the rest.</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      <strong>SM2CAN</strong> is an open-source project by <a href="https://github.com/aldoguzman97">Aldo Guzman</a>.
+      Licensed under <a href="https://github.com/aldoguzman97/sm2can/blob/main/LICENSE">MIT</a>.
+    </p>
+    <p class="legal">
+      SM2CAN is not affiliated with, endorsed by, or sponsored by the manufacturers of the Scanmatik 2 Pro or any related products.
+      Product names are used solely for identification under nominative fair use.
+      See <a href="https://github.com/aldoguzman97/sm2can/blob/main/LEGAL.md">LEGAL.md</a> for clean room reverse engineering documentation.
+    </p>
+  </footer>
+
+</body>
+</html>
