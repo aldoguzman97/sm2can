@@ -1,0 +1,13 @@
+# SM2CAN — udev rules for SM2 Pro USB access without sudo
+#
+# Install:
+#   sudo cp 99-sm2pro.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules
+#   sudo udevadm trigger
+#
+# Add your user to plugdev:
+#   sudo usermod -aG plugdev $USER
+
+# SM2 Pro / Scanmatik 2 Pro (VID=0x20A2, PID=0x0001)
+SUBSYSTEM=="usb", ATTR{idVendor}=="20a2", ATTR{idProduct}=="0001", MODE="0666", GROUP="plugdev", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="20a2", ATTR{idProduct}=="0001", SYMLINK+="sm2pro%n"

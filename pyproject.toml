@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sm2can"
+version = "0.1.0"
+description = "Open-source macOS/Linux driver for SM2 Pro (Scanmatik 2 Pro) J2534 CAN adapter"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "Aldo Guzman", email = "aldoguzman97@users.noreply.github.com"},
+]
+maintainers = [
+    {name = "Aldo Guzman", email = "aldoguzman97@users.noreply.github.com"},
+]
+keywords = ["CAN", "OBD", "automotive", "J2534", "Scanmatik", "SM2", "python-can",
+            "reverse-engineering", "macOS", "Linux", "CAN-bus", "vehicle-diagnostics"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Interface Engine/Protocol Translator",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pyusb>=1.2.0",
+    "python-can>=4.0",
+]
+
+[project.optional-dependencies]
+bluetooth = [
+    "bleak>=0.21.0",  # Cross-platform Bluetooth LE (future SPP bridge)
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+capture = [
+    "pyshark",  # For analyzing Windows USB captures (optional)
+]
+all = ["sm2can[bluetooth,dev,capture]"]
+
+[project.urls]
+Homepage = "https://github.com/aldoguzman97/sm2can"
+Repository = "https://github.com/aldoguzman97/sm2can"
+Issues = "https://github.com/aldoguzman97/sm2can/issues"
+Documentation = "https://github.com/aldoguzman97/sm2can/wiki"
+
+[project.scripts]
+sm2can = "sm2can.cli:main"
+sm2can-probe = "sm2can.tools.probe:main"
+sm2can-capture = "sm2can.tools.capture_decoder:main"
+
+# Register as a python-can interface plugin
+[project.entry-points."can.interface"]
+sm2 = "sm2can.can_interface:SM2Bus"
+
+[tool.setuptools.packages.find]
+include = ["sm2can*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
