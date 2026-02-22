@@ -71,7 +71,7 @@ class SM2Bus(can.BusABC):
             ) from e
 
         logger.info("SM2 Pro CAN bus opened: bitrate=%d, listen_only=%s",
-                    bitrate, listen_only)
+                     bitrate, listen_only)
 
     def send(self, msg: can.Message, timeout: Optional[float] = None) -> None:
         """Send a CAN message."""
@@ -111,8 +111,17 @@ class SM2Bus(can.BusABC):
 
     def shutdown(self) -> None:
         """Close the CAN bus and release the device."""
-        self._device.close()
+        try:
+            self._device.close()
+        except Exception:
+            pass
         super().shutdown()
+
+    def __del__(self) -> None:
+        try:
+            self.shutdown()
+        except Exception:
+            pass
 
     @staticmethod
     def _detect_available_configs():
@@ -131,8 +140,8 @@ class SM2Bus(can.BusABC):
     @property
     def channel_info(self) -> str:
         info = self._device.device_info
-        if info and info.serial_number:
-            return f"SM2 Pro S/N:{info.serial_number}"
+        if info and info.firmware_str != "unknown":
+            return f"SM2 Pro FW:{info.firmware_str}"
         return f"SM2 Pro ch={self.channel}"
 
     def fileno(self) -> int:

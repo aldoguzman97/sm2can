@@ -1,65 +1,43 @@
 # Legal Notice
 
-## Trademark Disclaimer
-
-"Scanmatik", "SM2 Pro", "Scanmatik 2 Pro", and all related names, logos,
-and product names are trademarks or registered trademarks of their respective
-owners. This project is **not** affiliated with, endorsed by, sponsored by,
-or in any way officially connected with Scanmatik LLC, its parent companies,
-subsidiaries, or affiliates.
-
-The names "Scanmatik" and "SM2 Pro" are used in this project solely for the
-purpose of identification and interoperability, as permitted under
-nominative fair use doctrine.
-
 ## Clean Room Reverse Engineering
 
-This software was developed using **clean room reverse engineering**
-techniques, a practice that is well-established as lawful under:
+SM2CAN was developed through clean room reverse engineering of a legitimately
+purchased SM2 Pro device. The purpose is to achieve interoperability — enabling
+the hardware to function on macOS and Linux, platforms not officially supported
+by the manufacturer.
 
-- **United States**: *Sega Enterprises Ltd. v. Accolade, Inc.*, 977 F.2d 1510
-  (9th Cir. 1992) — reverse engineering for interoperability is fair use.
-  *Sony Computer Entertainment v. Connectix Corp.*, 203 F.3d 596 (9th Cir. 2000)
-  — intermediate copying during reverse engineering is permissible when the
-  final product is independently created.
+## What was done
 
-- **European Union**: Directive 2009/24/EC, Article 6 — decompilation for
-  interoperability is permitted without authorization from the rights holder.
+1. **USB device enumeration** — Standard USB descriptor queries (`lsusb`,
+   `system_profiler`) to identify VID, PID, endpoints, and device class.
 
-- **Japan**: Copyright Act, Article 47-3 — reproduction for the purpose of
-  achieving interoperability is permitted.
+2. **Android APK analysis** — The official Scanmatik Android app
+   (`Scanmatik_Android_2.21.35.apk`) was decompiled using `jadx` to understand
+   the wire protocol frame format and checksum algorithm from the Java/JNI
+   transport layer.
 
-### What this means in practice
+3. **Live hardware probing** — Sending protocol frames to the device over USB
+   and observing responses to map the command space.
 
-1. **No proprietary code was used.** Every line of code in this project was
-   written from scratch. No code was copied, decompiled, or extracted from
-   any Scanmatik software, driver, or firmware.
+## What was NOT done
 
-2. **No proprietary documentation was used.** The protocol implemented here
-   was determined entirely through observation of the publicly visible USB
-   interface of a legitimately purchased device, using standard USB analysis
-   tools (USBPcap, Wireshark, pyusb).
+- No proprietary Windows DLL was disassembled or decompiled.
+- No proprietary firmware was extracted or modified.
+- No proprietary documentation was used.
+- No encryption or DRM was circumvented.
+- No copyrighted code was copied.
 
-3. **The techniques used are standard practice.** USB descriptor analysis,
-   endpoint probing, and traffic capture between a host and a device are
-   the same techniques used by every open-source device driver project
-   (the Linux kernel, libusb ecosystem, OpenOCD, sigrok, etc.).
+## Legal basis
 
-4. **The purpose is interoperability.** This project exists solely to allow
-   the SM2 Pro hardware — which users have legitimately purchased and own —
-   to function on operating systems not supported by the manufacturer
-   (macOS and Linux).
+Reverse engineering for interoperability is protected under:
 
-## No Warranty
+- **DMCA § 1201(f)** — Reverse engineering for interoperability of computer programs
+- **EU Directive 2009/24/EC, Article 6** — Decompilation for interoperability
+- **Australian Copyright Act 1968, § 47D** — Interoperability analysis
 
-This software is provided "as is" without warranty of any kind. See the
-[MIT License](LICENSE) for full terms. Use of this software with CAN bus
-hardware and vehicles is at your own risk. The author is not liable for
-any damage to hardware, vehicles, or other property.
+## Trademarks
 
-## Responsible Disclosure
-
-If the manufacturer of the SM2 Pro hardware believes any aspect of this
-project infringes on their rights, the author welcomes communication
-before any legal action. Contact: via GitHub Issues or the email address
-listed in the repository owner's GitHub profile.
+"Scanmatik" and "SM2 Pro" are trademarks of their respective owners. SM2CAN is
+an independent project and is not affiliated with, endorsed by, or sponsored by
+Scanmatik or any related entity.

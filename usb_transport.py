@@ -4,13 +4,15 @@ USB Transport Layer for SM2 Pro hardware.
 Handles raw USB communication via libusb (pyusb). No kernel driver required.
 Works on macOS and Linux.
 
-Hardware profile (from clean room reverse engineering of purchased device):
+Hardware profile (confirmed via probing 2026-02-22):
   - VID: 0x20A2  PID: 0x0001
   - Device Class: 0xFF (Vendor Specific)
+  - Speed: Full Speed (12 Mb/s)
   - Interface 0: 2 Bulk endpoints
-    - EP 0x81 IN  (device -> host), 64-byte max packet
-    - EP 0x02 OUT (host -> device), 64-byte max packet
-  - Requires 12V on OBD pin 16 for firmware to boot fully.
+    - EP 0x81 IN  (device → host)
+    - EP 0x02 OUT (host → device)
+  - Powers up on USB 5V alone (no 12V required for firmware boot)
+  - Manufacturer/Product/Serial strings: None (not populated in descriptor)
 
 Copyright (c) 2026 Aldo Guzman. MIT License.
 """
@@ -25,20 +27,20 @@ import usb.util
 
 logger = logging.getLogger(__name__)
 
-# ─────────────────────────────────────────────────────────
-# Constants
-# ─────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────
+# Constants — CONFIRMED from hardware probing
+# ─────────────────────────────────────────────────────
 SM2_VID = 0x20A2
 SM2_PID = 0x0001
 
-EP_IN  = 0x81   # Bulk IN endpoint address
-EP_OUT = 0x02   # Bulk OUT endpoint address
+EP_IN  = 0x81   # Bulk IN endpoint address (confirmed)
+EP_OUT = 0x02   # Bulk OUT endpoint address (confirmed)
 
 MAX_PACKET = 64  # USB full-speed bulk max packet size
 
 # Timeouts (milliseconds)
-DEFAULT_WRITE_TIMEOUT = 100
-DEFAULT_READ_TIMEOUT  = 100
+DEFAULT_WRITE_TIMEOUT = 1000
+DEFAULT_READ_TIMEOUT  = 500
 
 
 class USBTransportError(Exception):
@@ -49,22 +51,18 @@ class DeviceNotFoundError(USBTransportError):
     """Raised when the SM2 Pro is not found on the USB bus."""
 
 
-class DeviceNotBootedError(USBTransportError):
-    """Raised when the device is found but firmware hasn't booted (needs 12V)."""
-
-
 class USBTransport:
     """
     Low-level USB transport for SM2 Pro.
 
-    Provides raw bulk read/write and control transfer access.
-    Thread-safe for concurrent read/write from different threads.
+    Provides raw bulk read/write access. Thread-safe for concurrent
+    read/write from different threads.
 
     Example::
 
         transport = USBTransport()
         transport.open()
-        transport.write(b'\\x01\\x00\\x00')
+        transport.write(b'\\x88\\x00\\x00\\xDD')  # INIT command
         data = transport.read(timeout_ms=500)
         transport.close()
     """
@@ -77,6 +75,8 @@ class USBTransport:
         self.address = address
 
         self._dev: Optional[usb.core.Device] = None
+        self._ep_out = None
+        self._ep_in = None
         self._is_open = False
         self._write_lock = threading.Lock()
         self._read_lock = threading.Lock()
@@ -104,39 +104,28 @@ class USBTransport:
             )
 
         logger.info(
-            "Found SM2 Pro: VID=0x%04X PID=0x%04X Bus=%d Addr=%d",
+            "Found SM2 Pro: VID=0x%04X PID=0x%04X Bus=%s Addr=%s",
             self._dev.idVendor, self._dev.idProduct,
             self._dev.bus, self._dev.address,
         )
 
-        # Set configuration — required on macOS for vendor-specific devices
-        self._set_configuration()
-
-        # Detach kernel driver if attached (Linux only)
+        # Detach kernel driver if attached (Linux)
         self._detach_kernel_driver()
 
-        # Claim the interface
-        try:
-            usb.util.claim_interface(self._dev, 0)
-            logger.debug("Claimed interface 0")
-        except usb.core.USBError as e:
-            raise USBTransportError(
-                f"Cannot claim USB interface: {e}. "
-                f"Another process may be using the device, or try sudo."
-            ) from e
+        # Set configuration
+        self._set_configuration()
+
+        # Find bulk endpoints
+        self._find_endpoints()
 
         self._is_open = True
-        logger.info("SM2 Pro USB transport opened")
+        logger.info("SM2 Pro USB transport opened (EP OUT=0x%02X, EP IN=0x%02X)",
+                     self._ep_out.bEndpointAddress, self._ep_in.bEndpointAddress)
 
     def close(self) -> None:
-        """Release the USB interface and close the device."""
+        """Release the USB device."""
         if not self._is_open:
             return
-
-        try:
-            usb.util.release_interface(self._dev, 0)
-        except Exception:
-            pass
 
         try:
             usb.util.dispose_resources(self._dev)
@@ -144,16 +133,14 @@ class USBTransport:
             pass
 
         self._dev = None
+        self._ep_out = None
+        self._ep_in = None
         self._is_open = False
         logger.info("SM2 Pro USB transport closed")
 
     def write(self, data: bytes, timeout_ms: int = DEFAULT_WRITE_TIMEOUT) -> int:
         """
         Write data to the OUT bulk endpoint.
-
-        Args:
-            data: Bytes to send (split into 64-byte USB packets automatically).
-            timeout_ms: Write timeout in milliseconds.
 
         Returns:
             Number of bytes written.
@@ -165,7 +152,7 @@ class USBTransport:
 
         with self._write_lock:
             try:
-                written = self._dev.write(EP_OUT, data, timeout=timeout_ms)
+                written = self._ep_out.write(data, timeout=timeout_ms)
                 logger.debug("TX %d bytes: %s", len(data), data.hex(' '))
                 return written
             except usb.core.USBTimeoutError as e:
@@ -173,14 +160,10 @@ class USBTransport:
             except usb.core.USBError as e:
                 raise USBTransportError(f"USB write error: {e}") from e
 
-    def read(self, size: int = MAX_PACKET,
+    def read(self, size: int = 4096,
              timeout_ms: int = DEFAULT_READ_TIMEOUT) -> Optional[bytes]:
         """
         Read data from the IN bulk endpoint.
-
-        Args:
-            size: Maximum bytes to read (default: 64).
-            timeout_ms: Read timeout in milliseconds.
 
         Returns:
             Received bytes, or None on timeout.
@@ -189,7 +172,7 @@ class USBTransport:
 
         with self._read_lock:
             try:
-                data = self._dev.read(EP_IN, size, timeout=timeout_ms)
+                data = self._ep_in.read(size, timeout=timeout_ms)
                 if data is not None and len(data) > 0:
                     result = bytes(data)
                     logger.debug("RX %d bytes: %s", len(result), result.hex(' '))
@@ -204,12 +187,7 @@ class USBTransport:
 
     def read_all(self, timeout_ms: int = DEFAULT_READ_TIMEOUT,
                  max_packets: int = 16) -> bytes:
-        """
-        Read all available data (multiple packets until timeout).
-
-        Returns:
-            All received bytes concatenated.
-        """
+        """Read all available data (multiple packets until timeout)."""
         result = bytearray()
         for _ in range(max_packets):
             chunk = self.read(timeout_ms=timeout_ms)
@@ -218,112 +196,32 @@ class USBTransport:
             result.extend(chunk)
         return bytes(result)
 
-    def write_read(self, data: bytes, timeout_ms: int = 300) -> Optional[bytes]:
-        """
-        Write data and read the response (atomic operation).
-
-        Returns:
-            Response bytes, or None if no response.
-        """
+    def write_read(self, data: bytes, timeout_ms: int = 500) -> Optional[bytes]:
+        """Write data and read the response (atomic operation)."""
+        self.flush_input()
         self.write(data)
-        time.sleep(0.01)  # Small gap for device processing
+        time.sleep(0.02)
         return self.read_all(timeout_ms=timeout_ms)
 
-    def control_transfer(self, bmRequestType: int, bRequest: int,
-                         wValue: int = 0, wIndex: int = 0,
-                         data_or_wLength=None,
-                         timeout_ms: int = 200) -> Optional[bytes]:
-        """
-        Perform a USB control transfer (EP0).
-
-        Returns:
-            Response data for IN transfers, or None.
-        """
-        self._check_open()
-
-        try:
-            result = self._dev.ctrl_transfer(
-                bmRequestType, bRequest, wValue, wIndex,
-                data_or_wLength, timeout=timeout_ms
-            )
-            if result is not None and len(result) > 0:
-                return bytes(result)
-            return None
-        except usb.core.USBError:
-            return None
-
-    def reset(self) -> None:
-        """Perform a USB device reset."""
-        if self._dev:
-            try:
-                self._dev.reset()
-                time.sleep(1.0)
-            except usb.core.USBError as e:
-                logger.warning("USB reset failed: %s", e)
-
-    def check_firmware_booted(self) -> bool:
-        """
-        Check if the SM2 Pro firmware has fully booted.
-
-        The device needs 12V on the OBD connector. On USB power alone,
-        the MCU enumerates but bulk endpoints don't respond.
-
-        Returns:
-            True if firmware appears to be running.
-        """
-        if not self._is_open:
-            return False
-
-        try:
-            self.write(bytes([0x01]), timeout_ms=100)
-            time.sleep(0.1)
-            resp = self.read(timeout_ms=500)
-            return resp is not None
-        except USBTransportError:
-            return False
+    def flush_input(self) -> int:
+        """Drain any pending data from the IN endpoint."""
+        drained = 0
+        while True:
+            chunk = self.read(4096, timeout_ms=50)
+            if chunk is None:
+                break
+            drained += len(chunk)
+        if drained:
+            logger.debug("Flushed %d bytes from input", drained)
+        return drained
 
     # ─────────────────────────────────────────────────────
     # Private methods
     # ─────────────────────────────────────────────────────
 
     def _check_open(self) -> None:
-        """Raise if transport is not open."""
         if not self._is_open:
             raise USBTransportError("Transport not open — call open() first")
-
-    def _set_configuration(self) -> None:
-        """Set USB configuration, with reset-and-retry fallback."""
-        try:
-            self._dev.get_active_configuration()
-            return  # Already configured
-        except usb.core.USBError:
-            pass
-
-        try:
-            self._dev.set_configuration(1)
-            logger.debug("Set USB configuration 1")
-        except usb.core.USBError:
-            # Some devices need a reset before configuration
-            try:
-                self._dev.reset()
-                time.sleep(1.0)
-                self._dev = self._find_device()
-                if self._dev is None:
-                    raise USBTransportError("Device disappeared after USB reset")
-                self._dev.set_configuration(1)
-            except usb.core.USBError as e2:
-                raise USBTransportError(
-                    f"Cannot set USB configuration: {e2}. Try sudo."
-                ) from e2
-
-    def _detach_kernel_driver(self) -> None:
-        """Detach kernel driver from interface 0 (Linux only)."""
-        try:
-            if self._dev.is_kernel_driver_active(0):
-                self._dev.detach_kernel_driver(0)
-                logger.debug("Detached kernel driver from interface 0")
-        except (usb.core.USBError, NotImplementedError):
-            pass
 
     def _find_device(self) -> Optional[usb.core.Device]:
         """Find the SM2 Pro on the USB bus."""
@@ -340,20 +238,66 @@ class USBTransport:
         else:
             return usb.core.find(**kwargs)
 
+    def _set_configuration(self) -> None:
+        """Set USB configuration."""
+        try:
+            self._dev.set_configuration()
+        except usb.core.USBError:
+            pass  # May already be configured
+
+    def _detach_kernel_driver(self) -> None:
+        """Detach kernel driver from all interfaces (Linux)."""
+        for cfg in self._dev:
+            for intf in cfg:
+                try:
+                    if self._dev.is_kernel_driver_active(intf.bInterfaceNumber):
+                        self._dev.detach_kernel_driver(intf.bInterfaceNumber)
+                        logger.debug("Detached kernel driver from interface %d",
+                                     intf.bInterfaceNumber)
+                except (usb.core.USBError, NotImplementedError):
+                    pass
+
+    def _find_endpoints(self) -> None:
+        """Find bulk IN and OUT endpoints."""
+        cfg = self._dev.get_active_configuration()
+
+        for intf in cfg:
+            for ep in intf:
+                direction = usb.util.endpoint_direction(ep.bEndpointAddress)
+                transfer_type = ep.bmAttributes & 0x03
+                if transfer_type == 0x02:  # Bulk
+                    if (direction == usb.util.ENDPOINT_OUT
+                            and self._ep_out is None):
+                        self._ep_out = ep
+                    elif (direction == usb.util.ENDPOINT_IN
+                          and self._ep_in is None):
+                        self._ep_in = ep
+
+        if not self._ep_out or not self._ep_in:
+            raise USBTransportError(
+                "Could not find bulk IN/OUT endpoints. "
+                "Device may be in bootloader mode."
+            )
+
     @staticmethod
     def _get_backend():
         """Get the best available libusb backend."""
-        import usb.backend.libusb1
+        try:
+            import usb.backend.libusb1
+        except ImportError:
+            return None
 
         for path in [
             '/opt/homebrew/lib/libusb-1.0.dylib',       # Apple Silicon Homebrew
             '/usr/local/lib/libusb-1.0.dylib',           # Intel Homebrew
             '/usr/lib/libusb-1.0.so',                    # Linux
-            '/usr/lib/x86_64-linux-gnu/libusb-1.0.so',  # Debian amd64
+            '/usr/lib/x86_64-linux-gnu/libusb-1.0.so',   # Debian amd64
             '/usr/lib/aarch64-linux-gnu/libusb-1.0.so',  # Debian arm64
         ]:
             try:
-                be = usb.backend.libusb1.get_backend(find_library=lambda x, p=path: p)
+                be = usb.backend.libusb1.get_backend(
+                    find_library=lambda x, p=path: p
+                )
                 if be is not None:
                     return be
             except Exception:
@@ -370,11 +314,12 @@ class USBTransport:
         List all SM2 Pro devices on the USB bus.
 
         Returns:
-            List of dicts with bus, address, serial info.
+            List of dicts with bus, address info.
         """
         devices = []
         try:
-            for dev in usb.core.find(find_all=True, idVendor=vid, idProduct=pid):
+            for dev in usb.core.find(find_all=True,
+                                     idVendor=vid, idProduct=pid):
                 info = {
                     'bus': dev.bus,
                     'address': dev.address,
