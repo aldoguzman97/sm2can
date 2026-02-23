@@ -62,6 +62,20 @@ sm2can send 7DF 0201000000000000   # Send a frame
 sm2can echo               # Health check
 ```
 
+### CAN Sniffer (Hyundai)
+
+```bash
+sm2can-sniff                          # Sniff all CAN traffic
+sm2can-sniff --steering               # Only steering IDs (MDPS, SAS, LKAS)
+sm2can-sniff --filter 251,2B0,340     # Custom ID filter
+sm2can-sniff --inject                 # Sniff + inject passive LKAS11 probes
+sm2can-sniff --log capture.csv        # Log all frames to CSV
+sm2can-sniff --duration 30            # Auto-stop after 30 seconds
+sm2can-sniff --quiet                  # No live output, summary only
+```
+
+Decodes: MDPS12 (steering torque), SAS11 (steering angle), LKAS11 (LKAS commands), CLU11 (vehicle speed), WHL_SPD11 (wheel speeds), TCS13 (traction control), EMS11 (engine RPM). Includes steering system analysis at exit.
+
 ## Protocol
 
 The wire protocol was reverse engineered from the official Scanmatik Android APK and confirmed via live hardware probing.
@@ -93,6 +107,7 @@ See [SM2_PRO_PROTOCOL_SPEC.md](SM2_PRO_PROTOCOL_SPEC.md) for the complete protoc
 | System commands (INIT, ECHO, DEVICE_INFO, CLEAR_FIFO) | ✅ Confirmed |
 | CAN channel commands (0x8A-0x8F) | ⏳ Accept payloads, need vehicle bus to verify |
 | python-can integration | ✅ Complete |
+| CAN sniffer (Hyundai signal decoding) | ✅ Complete |
 | Bluetooth transport | 🔧 Framework (needs pybluez) |
 | CLI tools | ✅ Complete |
 

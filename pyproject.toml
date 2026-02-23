@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sm2can"
-version = "0.2.2"
+version = "0.2.3"
 description = "Open-source macOS/Linux driver for SM2 Pro J2534 CAN adapters"
 readme = "README.md"
 license = {text = "MIT"}
@@ -48,6 +48,7 @@ Issues = "https://github.com/aldoguzman97/sm2can/issues"
 sm2can = "sm2can.cli:main"
 sm2can-probe = "sm2can.tools.probe:main"
 sm2can-capture = "sm2can.tools.capture_decoder:main"
+sm2can-sniff = "sm2can.tools.sniffer:main"
 
 [project.entry-points."can.interface"]
 sm2 = "sm2can.can_interface:SM2Bus"
